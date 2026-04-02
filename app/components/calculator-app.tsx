@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
-import { ChartPanel } from "@/app/components/chart-panel";
 import { InputTable } from "@/app/components/input-table";
 import { ResultsPanel } from "@/app/components/results-panel";
 import {
@@ -15,6 +15,19 @@ import {
 } from "@/app/lib/calculator";
 
 const minimumRows = 4;
+const ChartPanel = dynamic(
+  () => import("@/app/components/chart-panel").then((module) => module.ChartPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <section className="rounded-3xl border border-slate-700/40 bg-slate-950/70 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.35)]">
+        <div className="rounded-[28px] border border-slate-800 bg-slate-900/65 p-8 text-center text-sm text-slate-300">
+          Loading chart visualization...
+        </div>
+      </section>
+    ),
+  },
+);
 
 function createEmptyDataset(name: string): Dataset {
   return createDataset(
@@ -31,6 +44,8 @@ export function CalculatorApp() {
   const [unit, setUnit] = useState<UnitSystem>("inch");
   const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
   const [activeDatasetId, setActiveDatasetId] = useState<string>(initialDatasets[0]?.id ?? "");
+  const [printRequested, setPrintRequested] = useState(false);
+  const [isPrinting, startPrintTransition] = useTransition();
 
   const results = useMemo(
     () => datasets.map((dataset) => ({ datasetId: dataset.id, result: calculateDataset(dataset, unit) })),
@@ -73,6 +88,33 @@ export function CalculatorApp() {
     setDatasets(resetDatasets);
     setActiveDatasetId(resetDatasets[0].id);
     setUnit("inch");
+  };
+
+  useEffect(() => {
+    if (!printRequested) {
+      return;
+    }
+
+    let timeoutId = 0;
+    const frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(() => {
+        window.print();
+        startPrintTransition(() => {
+          setPrintRequested(false);
+        });
+      }, 0);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [printRequested]);
+
+  const handlePrintReport = () => {
+    startPrintTransition(() => {
+      setPrintRequested(true);
+    });
   };
 
   return (
@@ -131,10 +173,11 @@ export function CalculatorApp() {
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={handlePrintReport}
+                disabled={isPrinting || printRequested}
                 className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
               >
-                Print Report
+                {isPrinting || printRequested ? "Preparing Report..." : "Print Report"}
               </button>
             </div>
           </div>
@@ -205,18 +248,17 @@ export function CalculatorApp() {
           </div>
         </section>
 
-        <main className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <div className="space-y-6">
+        <main className="mt-6 space-y-6">
+          <ResultsPanel
+            dataset={activeDataset}
+            result={activeResult}
+            averageIntensityInch={averageIntensityInch}
+            unit={unit}
+          />
+
+          <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
             <InputTable dataset={activeDataset} unit={unit} onDatasetChange={updateDataset} />
             <ChartPanel result={activeResult} unit={unit} />
-          </div>
-          <div className="space-y-6">
-            <ResultsPanel
-              dataset={activeDataset}
-              result={activeResult}
-              averageIntensityInch={averageIntensityInch}
-              unit={unit}
-            />
           </div>
         </main>
       </div>

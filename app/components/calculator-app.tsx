@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { InputTable } from "@/app/components/input-table";
 import { ResultsPanel } from "@/app/components/results-panel";
@@ -49,9 +49,6 @@ export function CalculatorApp() {
   const [activeStripFilter, setActiveStripFilter] = useState<"ALL" | StripType>("ALL");
   const [printRequested, setPrintRequested] = useState(false);
   const [isPrinting, startPrintTransition] = useTransition();
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [exportStatus, setExportStatus] = useState<string | null>(null);
-  const reportRef = useRef<HTMLDivElement | null>(null);
 
   const results = useMemo(
     () => datasets.map((dataset) => ({ datasetId: dataset.id, result: calculateDataset(dataset, unit) })),
@@ -135,110 +132,9 @@ export function CalculatorApp() {
     });
   };
 
-  const handleExportPdf = () => {
-    const target = reportRef.current;
-    if (!target || isExportingPdf) {
-      return;
-    }
-
-    setIsExportingPdf(true);
-    setExportStatus(null);
-    void (async () => {
-      const [{ default: html2canvas }, jspdfModule] = await Promise.all([
-        import("html2canvas"),
-        import("jspdf/dist/jspdf.es.min.js"),
-      ]);
-      const { jsPDF } = jspdfModule;
-
-      const canvas = await html2canvas(target, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        useCORS: true,
-        logging: false,
-        scrollX: 0,
-        scrollY: -window.scrollY,
-      });
-      const imageData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-      });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 8;
-      const usableWidth = pageWidth - margin * 2;
-      const usableHeight = pageHeight - margin * 2;
-      const imageHeight = (canvas.height * usableWidth) / canvas.width;
-
-      if (imageHeight <= usableHeight) {
-        pdf.addImage(imageData, "PNG", margin, margin, usableWidth, imageHeight);
-      } else {
-        const pageCanvas = document.createElement("canvas");
-        const pageContext = pageCanvas.getContext("2d");
-        const sliceHeight = Math.floor((usableHeight * canvas.width) / usableWidth);
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceHeight;
-
-        if (!pageContext) {
-          return;
-        }
-
-        let renderedHeight = 0;
-        let pageIndex = 0;
-
-        while (renderedHeight < canvas.height) {
-          pageContext.clearRect(0, 0, pageCanvas.width, pageCanvas.height);
-          pageContext.drawImage(
-            canvas,
-            0,
-            renderedHeight,
-            canvas.width,
-            sliceHeight,
-            0,
-            0,
-            pageCanvas.width,
-            sliceHeight,
-          );
-
-          const pageImage = pageCanvas.toDataURL("image/png");
-          if (pageIndex > 0) {
-            pdf.addPage();
-          }
-
-          const currentSliceHeight = Math.min(sliceHeight, canvas.height - renderedHeight);
-          const renderedPageHeight = (currentSliceHeight * usableWidth) / canvas.width;
-          pdf.addImage(pageImage, "PNG", margin, margin, usableWidth, renderedPageHeight);
-
-          renderedHeight += currentSliceHeight;
-          pageIndex += 1;
-        }
-      }
-
-      const blob = pdf.output("blob");
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `cw-peen-report-${(activeDataset.name || activeDataset.id).replace(/\s+/g, "-").toLowerCase()}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setExportStatus("PDF report downloaded.");
-      setIsExportingPdf(false);
-    })().catch((error) => {
-      console.error("PDF export failed", error);
-      setExportStatus("PDF export failed. Try again after the chart finishes loading.");
-      setIsExportingPdf(false);
-    });
-  };
-
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.18),_transparent_28%),linear-gradient(135deg,_#020617_0%,_#0f172a_42%,_#1e293b_100%)] text-slate-100">
-      <div
-        ref={reportRef}
-        className="mx-auto flex w-full max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-8 print:max-w-none print:px-0 print:py-0"
-      >
+      <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-8 print:max-w-none print:px-0 print:py-0">
         <header className="rounded-3xl border border-slate-700/40 bg-slate-950/70 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.35)] print:border-slate-300 print:bg-white print:shadow-none">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div className="max-w-3xl">
@@ -292,14 +188,6 @@ export function CalculatorApp() {
               </button>
               <button
                 type="button"
-                onClick={handleExportPdf}
-                disabled={isExportingPdf}
-                className="rounded-full border border-emerald-300/60 bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:opacity-70"
-              >
-                {isExportingPdf ? "Exporting PDF..." : "Export PDF"}
-              </button>
-              <button
-                type="button"
                 onClick={handlePrintReport}
                 disabled={isPrinting || printRequested}
                 className="rounded-full border border-slate-500/60 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 disabled:opacity-70"
@@ -309,12 +197,6 @@ export function CalculatorApp() {
             </div>
           </div>
         </header>
-
-        {exportStatus ? (
-          <div className="mt-4 rounded-2xl border border-cyan-400/25 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100 print:hidden">
-            {exportStatus}
-          </div>
-        ) : null}
 
         <section className="mt-6 rounded-3xl border border-slate-700/40 bg-slate-950/70 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.35)] print:border-slate-300 print:bg-white print:shadow-none">
           <div className="flex flex-wrap items-center justify-between gap-4">

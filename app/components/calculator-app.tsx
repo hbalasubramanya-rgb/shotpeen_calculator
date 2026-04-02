@@ -1,12 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { InputTable } from "@/app/components/input-table";
 import { ResultsPanel } from "@/app/components/results-panel";
 import {
   Dataset,
+  StripType,
   UnitSystem,
   calculateAverageIntensity,
   calculateDataset,
@@ -15,6 +16,7 @@ import {
 } from "@/app/lib/calculator";
 
 const minimumRows = 4;
+const stripFilters: Array<"ALL" | StripType> = ["ALL", "A", "N", "C"];
 const ChartPanel = dynamic(
   () => import("@/app/components/chart-panel").then((module) => module.ChartPanel),
   {
@@ -44,8 +46,11 @@ export function CalculatorApp() {
   const [unit, setUnit] = useState<UnitSystem>("inch");
   const [datasets, setDatasets] = useState<Dataset[]>(initialDatasets);
   const [activeDatasetId, setActiveDatasetId] = useState<string>(initialDatasets[0]?.id ?? "");
+  const [activeStripFilter, setActiveStripFilter] = useState<"ALL" | StripType>("ALL");
   const [printRequested, setPrintRequested] = useState(false);
   const [isPrinting, startPrintTransition] = useTransition();
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const reportRef = useRef<HTMLDivElement | null>(null);
 
   const results = useMemo(
     () => datasets.map((dataset) => ({ datasetId: dataset.id, result: calculateDataset(dataset, unit) })),
@@ -56,7 +61,16 @@ export function CalculatorApp() {
   const activeResult =
     results.find((entry) => entry.datasetId === activeDataset?.id)?.result ??
     calculateDataset(activeDataset, unit);
-  const averageIntensityInch = calculateAverageIntensity(results.map((entry) => entry.result));
+  const visibleDatasets =
+    activeStripFilter === "ALL"
+      ? datasets
+      : datasets.filter((dataset) => dataset.stripType === activeStripFilter);
+  const visibleResults = results.filter(({ datasetId }) =>
+    visibleDatasets.some((dataset) => dataset.id === datasetId),
+  );
+  const averageIntensityInch = calculateAverageIntensity(
+    visibleResults.map((entry) => entry.result),
+  );
 
   const updateDataset = (updatedDataset: Dataset) => {
     setDatasets((current) =>
@@ -65,7 +79,10 @@ export function CalculatorApp() {
   };
 
   const addDataset = () => {
-    const dataset = createEmptyDataset(`Dataset ${datasets.length + 1}`);
+    const dataset = createEmptyDataset(`${activeStripFilter === "ALL" ? "Dataset" : `${activeStripFilter} Strip`} ${datasets.length + 1}`);
+    if (activeStripFilter !== "ALL") {
+      dataset.stripType = activeStripFilter;
+    }
     setDatasets((current) => [...current, dataset]);
     setActiveDatasetId(dataset.id);
   };
@@ -117,9 +134,95 @@ export function CalculatorApp() {
     });
   };
 
+  const handleExportPdf = () => {
+    const target = reportRef.current;
+    if (!target || isExportingPdf) {
+      return;
+    }
+
+    setIsExportingPdf(true);
+    void (async () => {
+      const [{ default: html2canvas }, jspdfModule] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf/dist/jspdf.es.min.js"),
+      ]);
+      const { jsPDF } = jspdfModule;
+
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+      });
+      const imageData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const usableWidth = pageWidth - margin * 2;
+      const usableHeight = pageHeight - margin * 2;
+      const imageHeight = (canvas.height * usableWidth) / canvas.width;
+
+      if (imageHeight <= usableHeight) {
+        pdf.addImage(imageData, "PNG", margin, margin, usableWidth, imageHeight);
+      } else {
+        const pageCanvas = document.createElement("canvas");
+        const pageContext = pageCanvas.getContext("2d");
+        const sliceHeight = Math.floor((usableHeight * canvas.width) / usableWidth);
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+
+        if (!pageContext) {
+          return;
+        }
+
+        let renderedHeight = 0;
+        let pageIndex = 0;
+
+        while (renderedHeight < canvas.height) {
+          pageContext.clearRect(0, 0, pageCanvas.width, pageCanvas.height);
+          pageContext.drawImage(
+            canvas,
+            0,
+            renderedHeight,
+            canvas.width,
+            sliceHeight,
+            0,
+            0,
+            pageCanvas.width,
+            sliceHeight,
+          );
+
+          const pageImage = pageCanvas.toDataURL("image/png");
+          if (pageIndex > 0) {
+            pdf.addPage();
+          }
+
+          const currentSliceHeight = Math.min(sliceHeight, canvas.height - renderedHeight);
+          const renderedPageHeight = (currentSliceHeight * usableWidth) / canvas.width;
+          pdf.addImage(pageImage, "PNG", margin, margin, usableWidth, renderedPageHeight);
+
+          renderedHeight += currentSliceHeight;
+          pageIndex += 1;
+        }
+      }
+
+      pdf.save(`cw-peen-report-${activeDataset.name || activeDataset.id}.pdf`);
+      setIsExportingPdf(false);
+    })().catch(() => {
+      setIsExportingPdf(false);
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.18),_transparent_28%),linear-gradient(135deg,_#020617_0%,_#0f172a_42%,_#1e293b_100%)] text-slate-100">
-      <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-8 print:max-w-none print:px-0 print:py-0">
+      <div
+        ref={reportRef}
+        className="mx-auto flex w-full max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-8 print:max-w-none print:px-0 print:py-0"
+      >
         <header className="rounded-3xl border border-slate-700/40 bg-slate-950/70 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.35)] print:border-slate-300 print:bg-white print:shadow-none">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div className="max-w-3xl">
@@ -173,11 +276,19 @@ export function CalculatorApp() {
               </button>
               <button
                 type="button"
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                className="rounded-full border border-emerald-300/60 bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:opacity-70"
+              >
+                {isExportingPdf ? "Exporting PDF..." : "Export PDF"}
+              </button>
+              <button
+                type="button"
                 onClick={handlePrintReport}
                 disabled={isPrinting || printRequested}
-                className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
+                className="rounded-full border border-slate-500/60 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800 disabled:opacity-70"
               >
-                {isPrinting || printRequested ? "Preparing Report..." : "Print Report"}
+                {isPrinting || printRequested ? "Preparing Print..." : "Print Report"}
               </button>
             </div>
           </div>
@@ -195,7 +306,7 @@ export function CalculatorApp() {
             </div>
             <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-right print:border-slate-300 print:bg-slate-50">
               <p className="text-xs uppercase tracking-[0.24em] text-slate-400 print:text-slate-500">
-                Average Intensity
+                Auto Average Intensity
               </p>
               <p className="mt-1 text-lg font-semibold text-white print:text-slate-900">
                 {averageIntensityInch !== null
@@ -206,7 +317,34 @@ export function CalculatorApp() {
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            {datasets.map((dataset, index) => {
+            {stripFilters.map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => {
+                  setActiveStripFilter(filter);
+                  const nextVisibleDataset =
+                    filter === "ALL"
+                      ? datasets[0]
+                      : datasets.find((dataset) => dataset.stripType === filter);
+
+                  if (nextVisibleDataset) {
+                    setActiveDatasetId(nextVisibleDataset.id);
+                  }
+                }}
+                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  activeStripFilter === filter
+                    ? "border-cyan-300 bg-cyan-400 text-slate-950"
+                    : "border-slate-700 bg-slate-900/55 text-slate-200 hover:border-cyan-400/50"
+                }`}
+              >
+                {filter === "ALL" ? "All Strips" : `${filter} Strip`}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            {visibleDatasets.map((dataset, index) => {
               const datasetResult = results.find((entry) => entry.datasetId === dataset.id)?.result;
               const isActive = dataset.id === activeDatasetId;
               const statusColor =
@@ -230,7 +368,7 @@ export function CalculatorApp() {
                   >
                     <p className="text-sm font-semibold">{dataset.name || `Dataset ${index + 1}`}</p>
                     <p className="mt-1 text-xs uppercase tracking-[0.22em]">
-                      {datasetResult?.saturationPoint ? "Saturated" : "Pending"}
+                      {dataset.stripType} Strip | {datasetResult?.saturationPoint ? "Saturated" : "Pending"}
                     </p>
                   </button>
                   {datasets.length > 1 ? (

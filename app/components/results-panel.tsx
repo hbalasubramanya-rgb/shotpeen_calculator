@@ -162,6 +162,24 @@ export function ResultsPanel({
               </p>
             </div>
           </div>
+
+          <div
+            className={`mt-4 rounded-2xl border px-4 py-4 print:border-slate-300 print:bg-white ${
+              result.recommendation.tone === "ok"
+                ? "border-emerald-400/35 bg-emerald-500/10"
+                : "border-amber-400/35 bg-amber-500/10"
+            }`}
+          >
+            <p className="text-xs uppercase tracking-[0.22em] text-slate-300 print:text-slate-500">
+              Smart Alert
+            </p>
+            <p className="mt-2 text-lg font-semibold text-white print:text-slate-900">
+              {result.recommendation.title}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-300 print:text-slate-700">
+              {result.recommendation.detail}
+            </p>
+          </div>
         </div>
 
         <div className="grid gap-4">

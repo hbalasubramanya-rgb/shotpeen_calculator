@@ -47,6 +47,11 @@ export type DatasetResult = {
     | { status: "unknown"; reason: "Specify a valid min and max range." }
     | { status: "unknown"; reason: "Saturation not established." };
   chartPoints: ChartPoint[];
+  recommendation: {
+    tone: "ok" | "warn";
+    title: string;
+    detail: string;
+  };
   timestamp: string;
 };
 
@@ -294,6 +299,23 @@ export function calculateDataset(dataset: Dataset, unit: UnitSystem): DatasetRes
       point.measured === saturationPoint.arcHeightInch,
   }));
 
+  const lastPoint = sortedPoints[sortedPoints.length - 1] ?? null;
+  const nextExposureSuggestion = lastPoint ? lastPoint.exposure * 2 : null;
+  const recommendation =
+    saturationPoint !== null
+      ? {
+          tone: "ok" as const,
+          title: "Process condition acceptable",
+          detail: `Saturation established at ${saturationPoint.exposure}T. Maintain exposure near the detected saturation point and verify with routine strip checks.`,
+        }
+      : {
+          tone: "warn" as const,
+          title: "Increase exposure time",
+          detail: nextExposureSuggestion
+            ? `Saturation was not established with the current series. Extend the test beyond ${lastPoint?.exposure}T and evaluate at approximately ${nextExposureSuggestion}T or higher.`
+            : "Saturation was not established. Add valid exposure-time pairs and extend exposure time until the 2T change falls below 10%.",
+        };
+
   return {
     validPoints,
     sortedPoints,
@@ -305,6 +327,7 @@ export function calculateDataset(dataset: Dataset, unit: UnitSystem): DatasetRes
     specMaxInch,
     compliance,
     chartPoints,
+    recommendation,
     timestamp: new Date().toLocaleString(),
   };
 }

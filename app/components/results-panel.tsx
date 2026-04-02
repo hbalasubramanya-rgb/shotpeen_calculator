@@ -6,6 +6,7 @@ import {
   UnitSystem,
   formatArcHeight,
   formatIntensity,
+  getStripThickness,
 } from "@/app/lib/calculator";
 
 type ResultsPanelProps = {
@@ -22,6 +23,7 @@ export function ResultsPanel({
   unit,
 }: ResultsPanelProps) {
   const saturationOk = result.saturationPoint !== null;
+  const stripThickness = getStripThickness(dataset.stripType, unit);
   const complianceTone =
     result.compliance.status === "pass"
       ? {
@@ -226,6 +228,12 @@ export function ResultsPanel({
                 <dd className="text-right text-sm font-medium text-white print:text-slate-900">
                   {formatArcHeight(result.specMinInch, unit)} to{" "}
                   {formatArcHeight(result.specMaxInch, unit)} {unit === "inch" ? "in" : "mm"}
+                </dd>
+              </div>
+              <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-4 print:border-slate-200">
+                <dt className="text-sm text-slate-400 print:text-slate-600">Strip Thickness</dt>
+                <dd className="text-right text-sm font-medium text-white print:text-slate-900">
+                  {stripThickness.toFixed(3)} {unit === "inch" ? "in" : "mm"} ({dataset.stripType} strip)
                 </dd>
               </div>
               <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-4 print:border-slate-200">

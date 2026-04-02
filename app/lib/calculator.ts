@@ -1,6 +1,12 @@
 export type UnitSystem = "inch" | "mm";
 export type StripType = "A" | "N" | "C";
 
+export const STRIP_THICKNESS_INCH: Record<StripType, number> = {
+  N: 0.031,
+  A: 0.051,
+  C: 0.094,
+};
+
 export type DataPoint = {
   id: string;
   exposure: string;
@@ -111,6 +117,10 @@ export function formatIntensity(
   }
 
   return `${formatArcHeight(valueInch, unit)}${stripType}`;
+}
+
+export function getStripThickness(stripType: StripType, unit: UnitSystem) {
+  return convertToUnit(STRIP_THICKNESS_INCH[stripType], unit);
 }
 
 function parsePositiveNumber(value: string): number | null {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Dataset, StripType, UnitSystem } from "@/app/lib/calculator";
+import { Dataset, StripType, UnitSystem, getStripThickness } from "@/app/lib/calculator";
 
 type InputTableProps = {
   dataset: Dataset;
@@ -11,6 +11,8 @@ type InputTableProps = {
 const stripOptions: StripType[] = ["A", "N", "C"];
 
 export function InputTable({ dataset, unit, onDatasetChange }: InputTableProps) {
+  const stripThickness = getStripThickness(dataset.stripType, unit);
+
   const updatePoint = (pointId: string, field: "exposure" | "arcHeight", value: string) => {
     onDatasetChange({
       ...dataset,
@@ -89,6 +91,10 @@ export function InputTable({ dataset, unit, onDatasetChange }: InputTableProps) 
               </option>
             ))}
           </select>
+          <p className="text-xs text-slate-400 print:text-slate-600">
+            Thickness: {unit === "inch" ? stripThickness.toFixed(3) : stripThickness.toFixed(3)}{" "}
+            {unit === "inch" ? "in" : "mm"}
+          </p>
         </label>
         <label className="space-y-2">
           <span className="text-sm font-medium text-slate-300 print:text-slate-700">

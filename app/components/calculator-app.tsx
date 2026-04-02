@@ -50,6 +50,7 @@ export function CalculatorApp() {
   const [printRequested, setPrintRequested] = useState(false);
   const [isPrinting, startPrintTransition] = useTransition();
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement | null>(null);
 
   const results = useMemo(
@@ -141,6 +142,7 @@ export function CalculatorApp() {
     }
 
     setIsExportingPdf(true);
+    setExportStatus(null);
     void (async () => {
       const [{ default: html2canvas }, jspdfModule] = await Promise.all([
         import("html2canvas"),
@@ -152,6 +154,9 @@ export function CalculatorApp() {
         scale: 2,
         backgroundColor: "#ffffff",
         useCORS: true,
+        logging: false,
+        scrollX: 0,
+        scrollY: -window.scrollY,
       });
       const imageData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
@@ -210,9 +215,20 @@ export function CalculatorApp() {
         }
       }
 
-      pdf.save(`cw-peen-report-${activeDataset.name || activeDataset.id}.pdf`);
+      const blob = pdf.output("blob");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `cw-peen-report-${(activeDataset.name || activeDataset.id).replace(/\s+/g, "-").toLowerCase()}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setExportStatus("PDF report downloaded.");
       setIsExportingPdf(false);
-    })().catch(() => {
+    })().catch((error) => {
+      console.error("PDF export failed", error);
+      setExportStatus("PDF export failed. Try again after the chart finishes loading.");
       setIsExportingPdf(false);
     });
   };
@@ -293,6 +309,12 @@ export function CalculatorApp() {
             </div>
           </div>
         </header>
+
+        {exportStatus ? (
+          <div className="mt-4 rounded-2xl border border-cyan-400/25 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100 print:hidden">
+            {exportStatus}
+          </div>
+        ) : null}
 
         <section className="mt-6 rounded-3xl border border-slate-700/40 bg-slate-950/70 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.35)] print:border-slate-300 print:bg-white print:shadow-none">
           <div className="flex flex-wrap items-center justify-between gap-4">
